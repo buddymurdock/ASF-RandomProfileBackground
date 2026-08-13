@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using ArchiSteamFarm.Core;
 using ArchiSteamFarm.Plugins.Interfaces;
 using ArchiSteamFarm.Steam;
+using ArchiSteamFarm.Steam.Integration;
 using ArchiSteamFarm.Web.Responses;
 using JetBrains.Annotations;
 using SteamKit2;
@@ -187,7 +188,7 @@ internal sealed class RandomProfileBackground : IASF, IBotConnection, IGitHubPlu
 			{ "input_json", JsonSerializer.Serialize(new Dictionary<string, string>(StringComparer.Ordinal) { { "communityitemid", communityItemID } }) }
 		};
 
-		return await bot.ArchiWebHandler.UrlPostWithSession(request, data: data, referer: SteamCommunityURL, session: ESession.None).ConfigureAwait(false);
+		return await bot.ArchiWebHandler.UrlPostWithSession(request, data: data, referer: SteamCommunityURL, session: ArchiWebHandler.ESession.None).ConfigureAwait(false);
 	}
 
 	private sealed record ProfileItemsOwnedEnvelope([property: JsonPropertyName("response")] ProfileItemsOwnedResponse? Response);
