@@ -111,10 +111,10 @@ internal sealed class RandomProfileBackground : IASF, IBotConnection, IGitHubPlu
 
 	private async Task BotBackgroundLoopAsync(Bot bot, CancellationToken cancellationToken) {
 		while (!cancellationToken.IsCancellationRequested) {
-			int delayDays = MinDelayInDays == MaxDelayInDays ? MinDelayInDays : Random.Shared.Next(MinDelayInDays, MaxDelayInDays + 1);
+			TimeSpan delay = GetRandomDelay(MinDelayInDays, MaxDelayInDays);
 
 			try {
-				await LongDelayAsync(TimeSpan.FromDays(delayDays), cancellationToken).ConfigureAwait(false);
+				await LongDelayAsync(delay, cancellationToken).ConfigureAwait(false);
 			} catch (OperationCanceledException) {
 				break;
 			}
@@ -146,6 +146,35 @@ internal sealed class RandomProfileBackground : IASF, IBotConnection, IGitHubPlu
 		if (delay > TimeSpan.Zero) {
 			await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
 		}
+	}
+
+	// Real people don't wait a uniformly random amount of time between actions - intervals tend
+	// to cluster around a typical gap with occasional much shorter/longer ones (bursty/heavy-tailed),
+	// not spread flat across [min, max]. Log-normal captures that: min/max become the ~5th/95th
+	// percentiles rather than hard bounds, with sqrt(min*max) as the median.
+	// z is clamped before use because extreme (min, max) ratios (e.g. min=1, max=65535) produce a
+	// large sigma - an un-clamped Box-Muller tail can drive Math.Exp()/TimeSpan.FromDays() into
+	// Infinity/OverflowException, the same failure class LongDelayAsync above was written to fix.
+	// The final Math.Clamp is a second, independent safety net on the result itself, keeping delays
+	// (and LongDelayAsync's chunking loop) bounded to something sane even for pathological configs.
+	private static TimeSpan GetRandomDelay(ushort minDays, ushort maxDays) {
+		if (minDays == maxDays) {
+			return TimeSpan.FromDays(minDays);
+		}
+
+		double median = Math.Sqrt((double) minDays * maxDays);
+		double sigma = Math.Log((double) maxDays / minDays) / (2 * 1.645);
+
+		double u1 = 1.0 - Random.Shared.NextDouble();
+		double u2 = Random.Shared.NextDouble();
+		double z = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2);
+
+		z = Math.Clamp(z, -3.5, 3.5);
+
+		double days = median * Math.Exp(sigma * z);
+		days = Math.Clamp(days, minDays / 10.0, maxDays * 5.0);
+
+		return TimeSpan.FromDays(days);
 	}
 
 	private async Task TrySetRandomBackgroundAsync(Bot bot) {
